@@ -1,0 +1,428 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Advanced Roulette Strategy Simulator</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            text-align: center;
+            background-image: url('BG.jpeg');
+            background-size: cover;
+            background-position: center;
+            background-repeat: no-repeat;
+            background-attachment: fixed;
+            margin: 0;
+            padding: 20px;
+            color: white;
+        }
+        .container {
+            max-width: 700px;
+            margin: 0 auto;
+            background: rgba(0, 0, 0, 0.7);
+            padding: 20px;
+            border-radius: 15px;
+            box-shadow: 0 0 20px rgba(0,0,0,0.5);
+        }
+        h1 { color: #ffd700; }
+        select, input, button {
+            padding: 8px;
+            margin: 5px;
+            font-size: 16px;
+        }
+        button {
+            background: #28a745;
+            color: white;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+        }
+        button:hover { opacity: 0.9; }
+        button.stop { background: #dc3545; }
+        button.reset { background: #007bff; }
+        button:disabled { opacity: 0.5; cursor: not-allowed; }
+        .strategy-params { margin: 15px 0; }
+        .strategy-params:not(.active) { display: none; }
+        .stats {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 10px;
+            margin: 20px 0;
+            font-size: 18px;
+        }
+        .stats div {
+            background: rgba(255,255,255,0.2);
+            padding: 10px;
+            border-radius: 8px;
+        }
+        .log {
+            height: 200px;
+            overflow-y: auto;
+            background: rgba(0,0,0,0.5);
+            padding: 10px;
+            text-align: left;
+            margin: 20px 0;
+            border-radius: 8px;
+            font-size: 12px;
+        }
+        .positive { color: #00ff00 !important; }
+        .negative { color: #ff4444 !important; }
+        .wheel-container {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            gap: 30px;
+            margin: 20px;
+        }
+        .wheel {
+            width: 180px;
+            height: 180px;
+            background: url('roulette-wheel.png') center/cover no-repeat;
+            border-radius: 50%;
+            border: 6px solid gold;
+        }
+        .wheel.spinning {
+            animation: spin 1s linear infinite;
+        }
+        @keyframes spin {
+            from { transform: rotate(0deg); }
+            to { transform: rotate(360deg); }
+        }
+        .number-display {
+            width: 80px;
+            height: 80px;
+            font-size: 32px;
+            font-weight: bold;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            border-radius: 15px;
+            border: 4px solid white;
+            color: white;
+        }
+        label { display: block; margin: 10px 0; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Advanced Roulette Strategy Simulator</h1>
+        <p>Test popular betting systems on even-money bets (Red/Black)</p>
+
+        <label>Strategy:
+            <select id="strategySelect">
+                <option value="martingale">Martingale</option>
+                <option value="reverse-martingale">Reverse Martingale (Paroli)</option>
+                <option value="dalembert">D'Alembert</option>
+                <option value="fibonacci">Fibonacci</option>
+                <option value="labouchere">Labouchere</option>
+                <option value="flat">Flat Betting (Control)</option>
+            </select>
+        </label>
+
+        <div id="strategyParams" class="strategy-params">
+            <label>Base Unit ($): <input type="number" id="baseUnit" value="10" min="1"></label>
+
+            <div id="labouchereParams" class="strategy-params">
+                <label>Labouchere Sequence (comma-separated numbers): 
+                    <input type="text" id="labSequence" value="10,10,10,10" placeholder="e.g. 10,20,10">
+                </label>
+            </div>
+
+            <div id="paroliParams" class="strategy-params">
+                <label>Max Paroli Steps (before reset): <input type="number" id="paroliMax" value="3" min="1"></label>
+            </div>
+        </div>
+
+        <label>Bet on:
+            <select id="betColor">
+                <option value="red">Red</option>
+                <option value="black">Black</option>
+            </select>
+        </label>
+
+        <label>Starting Bankroll ($): <input type="number" id="bankrollInput" value="1000" min="100"></label>
+        <label>Max Spins: <input type="number" id="maxSpinsInput" value="500" min="1"></label>
+        <label>Spin Delay (ms, 0 = fastest): <input type="number" id="delayInput" value="50" min="0"></label>
+
+        <button id="start">Start Simulation</button>
+        <button id="stop" class="stop" disabled>Stop</button>
+        <button id="reset" class="reset">Reset</button>
+
+        <div class="wheel-container">
+            <div class="wheel" id="wheel"></div>
+            <div class="number-display" id="numberDisplay"></div>
+        </div>
+
+        <div class="stats">
+            <div>Bankroll: $<span id="bankroll">1000.00</span></div>
+            <div>Spins: <span id="spins">0</span></div>
+            <div>Current Bet: $<span id="currentBet">10.00</span></div>
+            <div>Wins: <span id="wins">0</span></div>
+            <div>Losses: <span id="losses">0</span></div>
+            <div>Net: $<span id="net">0.00</span></div>
+        </div>
+
+        <div class="log" id="log"></div>
+    </div>
+
+    <script>
+        class RouletteStrategySimulator {
+            constructor() {
+                this.wheel = [
+                    {n:'0', c:'green'}, {n:'28', c:'black'}, {n:'9', c:'red'}, {n:'26', c:'black'},
+                    {n:'30', c:'red'}, {n:'11', c:'black'}, {n:'7', c:'red'}, {n:'20', c:'black'},
+                    {n:'32', c:'red'}, {n:'17', c:'black'}, {n:'5', c:'red'}, {n:'22', c:'black'},
+                    {n:'34', c:'red'}, {n:'15', c:'black'}, {n:'3', c:'red'}, {n:'24', c:'black'},
+                    {n:'36', c:'red'}, {n:'13', c:'black'}, {n:'1', c:'red'}, {n:'00', c:'green'},
+                    {n:'27', c:'red'}, {n:'10', c:'black'}, {n:'25', c:'red'}, {n:'29', c:'black'},
+                    {n:'12', c:'red'}, {n:'8', c:'black'}, {n:'19', c:'red'}, {n:'31', c:'black'},
+                    {n:'18', c:'red'}, {n:'6', c:'black'}, {n:'21', c:'red'}, {n:'33', c:'black'},
+                    {n:'16', c:'red'}, {n:'4', c:'black'}, {n:'23', c:'red'}, {n:'35', c:'black'},
+                    {n:'14', c:'red'}, {n:'2', c:'black'}
+                ];
+
+                this.elements = {
+                    strategy: document.getElementById('strategySelect'),
+                    baseUnit: document.getElementById('baseUnit'),
+                    labSequence: document.getElementById('labSequence'),
+                    paroliMax: document.getElementById('paroliMax'),
+                    betColor: document.getElementById('betColor'),
+                    bankrollInput: document.getElementById('bankrollInput'),
+                    maxSpinsInput: document.getElementById('maxSpinsInput'),
+                    delayInput: document.getElementById('delayInput'),
+                    wheel: document.getElementById('wheel'),
+                    numberDisplay: document.getElementById('numberDisplay'),
+                    bankroll: document.getElementById('bankroll'),
+                    spins: document.getElementById('spins'),
+                    currentBet: document.getElementById('currentBet'),
+                    wins: document.getElementById('wins'),
+                    losses: document.getElementById('losses'),
+                    net: document.getElementById('net'),
+                    log: document.getElementById('log'),
+                    start: document.getElementById('start'),
+                    stop: document.getElementById('stop'),
+                    reset: document.getElementById('reset')
+                };
+
+                this.elements.strategy.addEventListener('change', () => this.updateParamsVisibility());
+                this.elements.start.addEventListener('click', () => this.start());
+                this.elements.stop.addEventListener('click', () => this.stop());
+                this.elements.reset.addEventListener('click', () => this.reset());
+
+                this.reset();
+                this.updateParamsVisibility();
+            }
+
+            updateParamsVisibility() {
+                document.getElementById('labouchereParams').classList.toggle('active', this.elements.strategy.value === 'labouchere');
+                document.getElementById('paroliParams').classList.toggle('active', this.elements.strategy.value === 'reverse-martingale');
+            }
+
+            reset() {
+                this.bankroll = parseFloat(this.elements.bankrollInput.value) || 1000;
+                this.initialBankroll = this.bankroll;
+                this.spins = 0;
+                this.wins = 0;
+                this.losses = 0;
+                this.currentBetAmount = parseFloat(this.elements.baseUnit.value) || 10;
+                this.sequence = [];
+                this.streak = 0;
+                this.isRunning = false;
+
+                this.elements.currentBet.textContent = this.currentBetAmount.toFixed(2);
+                this.updateDisplay();
+                this.elements.log.innerHTML = '';
+                this.elements.numberDisplay.textContent = '';
+                this.elements.numberDisplay.style.backgroundColor = 'transparent';
+                this.elements.start.disabled = false;
+                this.elements.stop.disabled = true;
+                this.elements.wheel.classList.remove('spinning');
+            }
+
+            spin() {
+                const result = this.wheel[Math.floor(Math.random() * this.wheel.length)];
+                this.elements.numberDisplay.textContent = result.n;
+                this.elements.numberDisplay.style.backgroundColor = result.c;
+                return result;
+            }
+
+            calculateNextBet() {
+                const strategy = this.elements.strategy.value;
+                const unit = parseFloat(this.elements.baseUnit.value) || 10;
+                let bet = unit;
+
+                switch (strategy) {
+                    case 'martingale':
+                        bet = this.currentBetAmount;
+                        break;
+                    case 'reverse-martingale':
+                        bet = unit * Math.pow(2, this.streak);
+                        break;
+                    case 'dalembert':
+                        bet = this.currentBetAmount;
+                        break;
+                    case 'fibonacci':
+                        if (this.sequence.length === 0) {
+                            this.sequence = [unit, unit];
+                        }
+                        bet = this.sequence[this.sequence.length - 1];
+                        break;
+                    case 'labouchere':
+                        if (this.sequence.length === 0) {
+                            const seq = this.elements.labSequence.value.split(',').map(n => parseFloat(n.trim())).filter(n => n > 0);
+                            this.sequence = seq.length > 0 ? seq.map(n => n * unit / 10) : [unit]; // scale if needed
+                        }
+                        if (this.sequence.length < 2) {
+                            bet = this.sequence[0] || unit;
+                        } else {
+                            bet = this.sequence[0] + this.sequence[this.sequence.length - 1];
+                        }
+                        break;
+                    case 'flat':
+                    default:
+                        bet = unit;
+                }
+
+                this.elements.currentBet.textContent = bet.toFixed(2);
+                return bet;
+            }
+
+            playRound() {
+                if (this.bankroll <= 0 || this.spins >= parseInt(this.elements.maxSpinsInput.value)) {
+                    this.stop();
+                    return false;
+                }
+
+                const bet = this.calculateNextBet();
+                if (bet > this.bankroll) {
+                    this.log(`BANKRUPT! Cannot place $${bet.toFixed(2)} bet.`);
+                    this.stop();
+                    return false;
+                }
+
+                this.spins++;
+                const result = this.spin();
+                const won = result.c === this.elements.betColor.value && result.c !== 'green';
+
+                let netChange = -bet;
+                if (won) {
+                    netChange += bet * 2;
+                    this.wins++;
+                } else {
+                    this.losses++;
+                }
+
+                this.bankroll += netChange;
+                this.updateStrategyState(won, bet);
+
+                const logMsg = `Spin ${this.spins}: ${result.n} (${result.c}) | Bet $${bet.toFixed(2)} on ${this.elements.betColor.value} | ${won ? 'WIN +$' + (bet).toFixed(2) : 'LOSS -$' + bet.toFixed(2)} | Bankroll $${this.bankroll.toFixed(2)}`;
+                this.log(logMsg);
+                this.updateDisplay();
+                return true;
+            }
+
+            updateStrategyState(won, bet) {
+                const strategy = this.elements.strategy.value;
+                const unit = parseFloat(this.elements.baseUnit.value) || 10;
+
+                if (won) {
+                    switch (strategy) {
+                        case 'martingale':
+                            this.currentBetAmount = unit;
+                            break;
+                        case 'reverse-martingale':
+                            this.streak++;
+                            if (this.streak >= parseInt(this.elements.paroliMax.value)) this.streak = 0;
+                            break;
+                        case 'dalembert':
+                            this.currentBetAmount = Math.max(unit, this.currentBetAmount - unit);
+                            break;
+                        case 'fibonacci':
+                            if (this.sequence.length > 2) {
+                                this.sequence.pop();
+                                this.sequence.pop();
+                            } else {
+                                this.sequence = [unit, unit];
+                            }
+                            break;
+                        case 'labouchere':
+                            if (this.sequence.length >= 2) {
+                                this.sequence.shift();
+                                this.sequence.pop();
+                            } else {
+                                this.sequence = [];
+                            }
+                            if (this.sequence.length === 0) this.log("Labouchere goal achieved!");
+                            break;
+                    }
+                } else {
+                    switch (strategy) {
+                        case 'martingale':
+                            this.currentBetAmount *= 2;
+                            break;
+                        case 'reverse-martingale':
+                            this.streak = 0;
+                            break;
+                        case 'dalembert':
+                            this.currentBetAmount += unit;
+                            break;
+                        case 'fibonacci':
+                            const next = this.sequence[this.sequence.length - 1] + (this.sequence[this.sequence.length - 2] || 0);
+                            this.sequence.push(next);
+                            break;
+                        case 'labouchere':
+                            this.sequence.push(bet);
+                            break;
+                    }
+                }
+            }
+
+            updateDisplay() {
+                this.elements.bankroll.textContent = this.bankroll.toFixed(2);
+                this.elements.bankroll.className = this.bankroll > this.initialBankroll ? 'positive' : this.bankroll < this.initialBankroll ? 'negative' : '';
+                this.elements.spins.textContent = this.spins;
+                this.elements.wins.textContent = this.wins;
+                this.elements.losses.textContent = this.losses;
+                const net = this.bankroll - this.initialBankroll;
+                this.elements.net.textContent = net.toFixed(2);
+                this.elements.net.className = net > 0 ? 'positive' : net < 0 ? 'negative' : '';
+            }
+
+            log(msg) {
+                const p = document.createElement('p');
+                p.textContent = msg;
+                this.elements.log.appendChild(p);
+                this.elements.log.scrollTop = this.elements.log.scrollHeight;
+            }
+
+            start() {
+                if (this.isRunning) return;
+                this.reset();
+                this.isRunning = true;
+                this.elements.wheel.classList.add('spinning');
+                this.elements.start.disabled = true;
+                this.elements.stop.disabled = false;
+
+                const delay = Math.max(0, parseInt(this.elements.delayInput.value));
+                this.interval = setInterval(() => {
+                    if (!this.playRound()) this.stop();
+                }, delay);
+            }
+
+            stop() {
+                clearInterval(this.interval);
+                this.isRunning = false;
+                this.elements.wheel.classList.remove('spinning');
+                this.elements.start.disabled = false;
+                this.elements.stop.disabled = true;
+
+                const net = this.bankroll - this.initialBankroll;
+                this.log(`=== SIMULATION STOPPED === Spins: ${this.spins} | Final Net: $${net.toFixed(2)}`);
+            }
+        }
+
+        const simulator = new RouletteStrategySimulator();
+    </script>
+</body>
+</html>
