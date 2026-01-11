@@ -61,14 +61,3 @@ A fun, interactive web-based simulator to test popular roulette betting strategi
 
 This is a single HTML file with embedded CSS and JavaScript — no server, no dependencies, no npm. Just open and play!
 
-## Future Ideas (if you want to expand)
-
-- Add bankroll-over-time chart (using Chart.js)
-- Run batch simulations (e.g., 10,000 sessions per strategy)
-- Compare multiple strategies side-by-side
-- Add European roulette (single zero) mode
-- Export results to CSV
-
-Enjoy responsibly — and may your virtual streaks be ever in your favor! 🍀
-
-Made with ❤️ by Grok
